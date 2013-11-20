@@ -39,6 +39,17 @@ public class MainActivity extends Activity
     bitmapHolder.storeBitmap(b);
     bitmapHolder.rotateBitmapCw90();
     imageViewRotated90degressCw.setImageBitmap(bitmapHolder.getBitmapAndFree());
+    
+    //
+    // rotated by any angle
+    // math based on http://polymathprogrammer.com/2008/10/06/image-rotation-with-bilinear-interpolation/  - "Throwing values from source to destination"
+    //
+    final ImageView imageViewRotatedAnyAngle=(ImageView)findViewById(R.id.imageViewRotatedAnyAngle);
+    bitmapHolder.storeBitmap(b);
+    bitmapHolder.rotateBitmapByAngle(45);
+    imageViewRotatedAnyAngle.setImageBitmap(bitmapHolder.getBitmapAndFree());
+  
+
     //
     // cropped
     //

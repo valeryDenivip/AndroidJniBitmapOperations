@@ -5,10 +5,12 @@
 #include <android/bitmap.h>
 #include <cstring>
 #include <unistd.h>
+#include <math.h>
 
 #define  LOG_TAG    "DEBUG"
 #define  LOGD(...)  __android_log_print(ANDROID_LOG_DEBUG,LOG_TAG,__VA_ARGS__)
 #define  LOGE(...)  __android_log_print(ANDROID_LOG_ERROR,LOG_TAG,__VA_ARGS__)
+#define PI 3.14159265359
 
 extern "C"
   {
@@ -22,6 +24,8 @@ extern "C"
   JNIEXPORT void JNICALL Java_com_jni_bitmap_1operations_JniBitmapHolder_jniRotateBitmapCcw90(JNIEnv * env, jobject obj, jobject handle);
   //rotate 90 degrees CW
   JNIEXPORT void JNICALL Java_com_jni_bitmap_1operations_JniBitmapHolder_jniRotateBitmapCw90(JNIEnv * env, jobject obj, jobject handle);
+  //rotate by algle
+  JNIEXPORT void JNICALL Java_com_jni_bitmap_1operations_JniBitmapHolder_jniRotateBitmapByAngle(JNIEnv * env, jobject obj, jobject handle, int32_t angle);
   //crop
   JNIEXPORT void JNICALL Java_com_jni_bitmap_1operations_JniBitmapHolder_jniCropBitmap(JNIEnv * env, jobject obj, jobject handle, uint32_t left, uint32_t top, uint32_t right, uint32_t bottom);
   //scale using nearest neighbor
@@ -116,6 +120,104 @@ JNIEXPORT void JNICALL Java_com_jni_bitmap_1operations_JniBitmapHolder_jniRotate
   bitmapInfo.width = bitmapInfo.height;
   bitmapInfo.height = temp;
   }
+
+/** Rotate Bitmap by angle */
+JNIEXPORT void JNICALL Java_com_jni_bitmap_1operations_JniBitmapHolder_jniRotateBitmapByAngle(JNIEnv * env, jobject obj, jobject handle, int32_t angle)
+{
+	LOGD("Rotate by angle");
+	JniBitmap* jniBitmap = (JniBitmap*) env->GetDirectBufferAddress(handle);
+	  if (jniBitmap->_storedBitmapPixels == NULL)
+	    return;
+	  uint32_t* previousData = jniBitmap->_storedBitmapPixels;
+	  AndroidBitmapInfo bitmapInfo = jniBitmap->_bitmapInfo;
+
+	  // rotating clockwise, so it's negative relative to Cartesian quadrants
+	  double cnAngle = -angle * PI / 180;
+
+	  double halfWidthDif, halfHeightDif;
+	  uint32_t oldWidth = bitmapInfo.width;
+	  uint32_t oldHeight = bitmapInfo.height;
+
+	  uint32_t nWidth = (uint32_t)ceil(sqrt(oldWidth*oldWidth + oldHeight*oldHeight) * cos(atan(oldHeight/oldWidth)+cnAngle));
+	  uint32_t nHeight = (uint32_t)ceil(sqrt(oldWidth*oldWidth + oldHeight*oldHeight) * cos(atan(oldWidth/oldHeight)+cnAngle));
+
+	  halfWidthDif = (nWidth - oldWidth) / 2;
+	  halfHeightDif = (nHeight - oldHeight) / 2;
+
+	  uint32_t* newBitmapPixels = new uint32_t[nWidth * nHeight];
+
+	  uint32_t i, j, iWidth, iHeight, iCentreX, iCentreY;
+	  int32_t x,y;
+	  double fDistance, fPolarAngle;
+
+	  iWidth = nWidth;
+	  iHeight = nHeight;
+
+	  iCentreX = iWidth / 2;
+	  iCentreY = iHeight / 2;
+
+	  for (i = 0; i < iHeight; ++i)
+	  {
+		  for (j = 0; j < iWidth; ++j)
+		  {
+			  // convert raster to Cartesian
+			  x = j - iCentreX;
+			  y = iCentreY - i;
+
+			  // convert Cartesian to polar
+			  fDistance = sqrt(x * x + y * y);
+
+			  fPolarAngle = 0.0;
+			  if (x == 0)
+			  {
+				  if (y == 0)
+				  {
+					  // centre of image, no rotation needed
+					  newBitmapPixels[i * iWidth + j] = previousData[i * iWidth + j];
+					  continue;
+				  }
+				  else if (y < 0)
+				  {
+					  fPolarAngle = 1.5 * PI;
+				  }
+				  else
+				  {
+					  fPolarAngle = 0.5 * PI;
+				  }
+			  }
+			  else
+			  {
+				  fPolarAngle = atan2((double)y, (double)x);
+			  }
+
+			  // the crucial rotation part
+			  // "reverse" rotate, so minus instead of plus
+			  fPolarAngle -= cnAngle;
+
+			  // convert polar to Cartesian
+			  x = (int)(round(fDistance * cos(fPolarAngle)));
+			  y = (int)(round(fDistance * sin(fPolarAngle)));
+
+			  // convert Cartesian to raster
+			  x = x + iCentreX;
+			  y = iCentreY - y;
+
+			  x = (int)round((double)x - halfWidthDif);
+			  y = (int)round((double)y - halfHeightDif);
+
+			  // check bounds
+			  // x, y should be inside small not-rotated square
+			  if (x < 0 || x >= oldWidth || y < 0 || y >= oldHeight) continue;
+
+			  newBitmapPixels[i * iWidth + j] = previousData[y * oldWidth + x];
+		  }
+	  }
+	  delete[] previousData;
+	  jniBitmap->_storedBitmapPixels = newBitmapPixels;
+	  jniBitmap->_bitmapInfo.width = nWidth;
+	  jniBitmap->_bitmapInfo.height = nHeight;
+}
+
 
 /**free bitmap*/  //
 JNIEXPORT void JNICALL Java_com_jni_bitmap_1operations_JniBitmapHolder_jniFreeBitmapData(JNIEnv * env, jobject obj, jobject handle)
